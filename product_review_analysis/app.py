@@ -9,19 +9,42 @@ from flask import Flask, render_template, request
 
 from rating_engine import classify_product
 
-# Load environment variables
+
+# --------------------------------------------------
+# 1. CONFIGURATION
+# --------------------------------------------------
+
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "development-secret")
 
+# Use a private secret from Render or local .env
+SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "").strip()
+
+if not SECRET_KEY:
+    raise RuntimeError(
+        "FLASK_SECRET_KEY is missing. Add it to your .env "
+        "file or Render environment variables."
+    )
+
+app.secret_key = SECRET_KEY
+
+# Bright Data account API key
 API_KEY = os.getenv("BRIGHTDATA_API_KEY", "").strip()
+
+# Remove Bearer prefix if accidentally included in the value
+if API_KEY.lower().startswith("bearer "):
+    API_KEY = API_KEY[7:].strip()
+
 BASE_URL = "https://api.brightdata.com/datasets/v3"
 
 logging.basicConfig(level=logging.INFO)
 
 
-# Supported shopping websites
+# --------------------------------------------------
+# 2. SUPPORTED SHOPPING WEBSITES
+# --------------------------------------------------
+
 MARKETPLACES = {
     "amazon.in": ("Amazon India", "AMAZON_DATASET_ID"),
     "amzn.in": ("Amazon India", "AMAZON_DATASET_ID"),
@@ -34,20 +57,29 @@ MARKETPLACES = {
 }
 
 
+# --------------------------------------------------
+# 3. VALIDATE PRODUCT URL
+# --------------------------------------------------
+
 def valid_product_url(url):
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
 
-    return (
-        parsed.scheme in ("https", "http")
-        and bool(parsed.hostname)
-    )
+        return (
+            parsed.scheme in ("https", "http")
+            and bool(parsed.hostname)
+        )
 
+    except ValueError:
+        return False
+
+
+# --------------------------------------------------
+# 4. EXPAND SHORTENED PRODUCT URLS
+# --------------------------------------------------
 
 def resolve_product_url(url):
-    """
-    Try to expand shortened shopping URLs.
-    If expansion fails, retain the original URL.
-    """
+
     try:
         response = requests.get(
             url,
@@ -65,38 +97,52 @@ def resolve_product_url(url):
             return response.url
 
     except requests.RequestException:
-        app.logger.warning("Could not expand shortened URL.")
+        app.logger.warning(
+            "Could not expand the supplied product URL."
+        )
 
     return url
 
 
+# --------------------------------------------------
+# 5. IDENTIFY MARKETPLACE
+# --------------------------------------------------
+
 def identify_marketplace(url):
+
     host = (urlparse(url).hostname or "").lower()
 
     for domain, config in MARKETPLACES.items():
 
         if host == domain or host.endswith("." + domain):
+
             name, env_key = config
             dataset_id = os.getenv(env_key, "").strip()
 
             if not dataset_id:
                 raise ValueError(
-                    f"{name} is recognised, but its Bright Data "
-                    "dataset ID is not configured in .env."
+                    f"{name} is recognised, but its dataset ID "
+                    f"({env_key}) is missing from the environment."
                 )
 
             return name, dataset_id
 
     raise ValueError(
         "This shopping website is not configured yet. "
-        "A supported Bright Data scraper is required."
+        "A compatible Bright Data scraper is required."
     )
 
 
+# --------------------------------------------------
+# 6. BRIGHT DATA AUTHENTICATION
+# --------------------------------------------------
+
 def api_headers():
+
     if not API_KEY:
         raise RuntimeError(
-            "Bright Data API key is missing. Check your .env file."
+            "Bright Data API key is missing. "
+            "Add BRIGHTDATA_API_KEY in Render Environment Variables."
         )
 
     return {
@@ -106,98 +152,169 @@ def api_headers():
     }
 
 
-def request_product_data(url, dataset_id):
-    """
-    Submit one product URL to Bright Data.
-    Handle both immediate and asynchronous responses.
-    """
+# --------------------------------------------------
+# 7. HANDLE BRIGHT DATA API ERRORS
+# --------------------------------------------------
 
-    response = requests.post(
-        f"{BASE_URL}/scrape",
-        params={
-            "dataset_id": dataset_id,
-            "format": "json"
-        },
-        headers=api_headers(),
-        json={
-            "input": [
-                {"url": url}
-            ]
-        },
-        timeout=90
+def check_api_response(response):
+
+    if response.ok:
+        return
+
+    status_code = response.status_code
+
+    try:
+        details = response.json()
+    except ValueError:
+        details = response.text[:1000]
+
+    app.logger.error(
+        "Bright Data API returned HTTP %s: %s",
+        status_code,
+        str(details)[:1000]
     )
 
-    # Include the provider's actual error message.
-    if response.status_code not in (200, 202):
+    if status_code == 401:
         raise RuntimeError(
-            f"Bright Data returned HTTP {response.status_code}: "
-            f"{response.text[:1500]}"
+            "Bright Data authentication failed (HTTP 401). "
+            "Check that BRIGHTDATA_API_KEY in Render is a valid "
+            "account API key from Bright Data Settings. "
+            "Do not use a proxy-zone password."
         )
 
-    # Immediate result
-    if response.status_code == 200:
-        try:
-            return response.json()
-        except ValueError:
-            raise RuntimeError(
-                "Bright Data returned an invalid JSON response."
-            )
-
-    # Asynchronous result
-    try:
-        snapshot_id = response.json().get("snapshot_id")
-    except ValueError:
-        snapshot_id = None
-
-    if not snapshot_id:
+    if status_code == 403:
         raise RuntimeError(
-            "Bright Data did not return a snapshot ID."
+            "Bright Data access denied (HTTP 403). "
+            "Check your account permissions and scraper access."
         )
 
-    # Check job status
-    for attempt in range(24):
-
-        time.sleep(5)
-
-        progress = requests.get(
-            f"{BASE_URL}/progress/{snapshot_id}",
-            headers=api_headers(),
-            timeout=30
+    if status_code == 404:
+        raise RuntimeError(
+            "Bright Data could not find the requested resource. "
+            "Check the dataset ID or snapshot ID."
         )
-
-        progress.raise_for_status()
-
-        status = progress.json().get("status")
-
-        app.logger.info(
-            "Bright Data job status: %s (check %s)",
-            status,
-            attempt + 1
-        )
-
-        if status == "ready":
-
-            result = requests.get(
-                f"{BASE_URL}/snapshot/{snapshot_id}",
-                params={"format": "json"},
-                headers=api_headers(),
-                timeout=60
-            )
-
-            result.raise_for_status()
-            return result.json()
-
-        if status == "failed":
-            raise RuntimeError(
-                "Bright Data could not process this product URL."
-            )
 
     raise RuntimeError(
-        "Product retrieval is taking too long. Please try again later."
+        f"Bright Data returned HTTP {status_code}: "
+        f"{str(details)[:1000]}"
     )
 
 
+# --------------------------------------------------
+# 8. REQUEST PRODUCT DATA
+# --------------------------------------------------
+
+def request_product_data(url, dataset_id):
+
+    headers = api_headers()
+
+    endpoint = f"{BASE_URL}/scrape"
+
+    payload = {
+        "input": [
+            {"url": url}
+        ]
+    }
+
+    try:
+
+        response = requests.post(
+            endpoint,
+            params={
+                "dataset_id": dataset_id,
+                "format": "json"
+            },
+            headers=headers,
+            json=payload,
+            timeout=90
+        )
+
+        check_api_response(response)
+
+        # Immediate response
+        if response.status_code == 200:
+            return response.json()
+
+        # Asynchronous response
+        if response.status_code == 202:
+
+            snapshot_id = response.json().get("snapshot_id")
+
+            if not snapshot_id:
+                raise RuntimeError(
+                    "Bright Data did not return a snapshot ID."
+                )
+
+            app.logger.info(
+                "Bright Data snapshot created successfully."
+            )
+
+            # Wait for scraping to finish
+            for attempt in range(24):
+
+                time.sleep(5)
+
+                progress = requests.get(
+                    f"{BASE_URL}/progress/{snapshot_id}",
+                    headers=headers,
+                    timeout=30
+                )
+
+                check_api_response(progress)
+
+                status = progress.json().get("status")
+
+                app.logger.info(
+                    "Bright Data job status: %s (check %s)",
+                    status,
+                    attempt + 1
+                )
+
+                if status == "ready":
+
+                    result = requests.get(
+                        f"{BASE_URL}/snapshot/{snapshot_id}",
+                        params={"format": "json"},
+                        headers=headers,
+                        timeout=60
+                    )
+
+                    check_api_response(result)
+
+                    return result.json()
+
+                if status == "failed":
+                    raise RuntimeError(
+                        "Bright Data could not process this product URL."
+                    )
+
+            raise RuntimeError(
+                "Product retrieval is taking too long. "
+                "Please try again later."
+            )
+
+        raise RuntimeError(
+            f"Unexpected Bright Data response: {response.status_code}"
+        )
+
+    except requests.Timeout:
+        raise RuntimeError(
+            "Bright Data request timed out. Please try again."
+        )
+
+    except requests.ConnectionError:
+        raise RuntimeError(
+            "Could not connect to Bright Data. "
+            "Please check the network and try again."
+        )
+
+
+# --------------------------------------------------
+# 9. EXTRACT VALUES FROM PRODUCT DATA
+# --------------------------------------------------
+
 def first_value(item, field_names):
+
     for field in field_names:
 
         value = item.get(field)
@@ -226,7 +343,7 @@ def extract_product_data(data):
         if not isinstance(item, dict):
             continue
 
-        # Product average rating fields
+        # Product average rating
         rating = first_value(item, [
             "rating",
             "product_rating",
@@ -235,25 +352,38 @@ def extract_product_data(data):
             "rating_value"
         ])
 
-        # Rating count fields
+        # Prefer actual rating count fields
         count = first_value(item, [
-    "rating_count",
-    "ratings_count",
-    "number_of_ratings",
-    "ratingCount",
-    "total_ratings",
-    "ratings_total",
-    "reviews_count"
-])
+            "rating_count",
+            "ratings_count",
+            "number_of_ratings",
+            "ratingCount",
+            "total_ratings",
+            "ratings_total"
+        ])
+
+        # Fallback: review count, not necessarily rating count
+        count_type = "rating_count"
+
+        if count is None:
+            count = first_value(item, [
+                "reviews_count",
+                "review_count"
+            ])
+            count_type = "review_count"
 
         if rating is None or count is None:
+
             app.logger.warning(
-                "Returned product fields: %s",
+                "Product rating fields not recognised. "
+                "Returned fields: %s",
                 list(item.keys())
             )
+
             continue
 
         try:
+
             rating = float(
                 str(rating).replace(",", "").strip()
             )
@@ -267,6 +397,12 @@ def extract_product_data(data):
 
         if 1 <= rating <= 5 and count >= 0:
 
+            if count_type == "review_count":
+                app.logger.warning(
+                    "Using reviews_count as a proxy for rating volume. "
+                    "This is not necessarily the total rating count."
+                )
+
             return {
                 "title": (
                     item.get("title")
@@ -274,15 +410,19 @@ def extract_product_data(data):
                     or "Product"
                 ),
                 "rating": rating,
-                "rating_count": count
+                "rating_count": count,
+                "count_type": count_type
             }
 
     raise ValueError(
         "Bright Data returned product data, but the rating fields "
-        "were not recognised. Check the actual output field names "
-        "in your Bright Data scraper."
+        "were not recognised. Check the scraper output fields."
     )
 
+
+# --------------------------------------------------
+# 10. MAIN ROUTE
+# --------------------------------------------------
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -302,10 +442,11 @@ def index():
         else:
 
             try:
-                # Expand shortened links when possible
+
+                # Expand shortened links
                 final_url = resolve_product_url(product_url)
 
-                # Identify the shopping website
+                # Identify marketplace
                 platform, dataset_id = identify_marketplace(
                     final_url
                 )
@@ -316,10 +457,10 @@ def index():
                     dataset_id
                 )
 
-                # Extract rating and rating count
+                # Extract rating details
                 product = extract_product_data(raw_data)
 
-                # Classify the product
+                # Classify product using existing rating engine
                 result = classify_product(
                     product["rating"],
                     product["rating_count"]
@@ -332,6 +473,7 @@ def index():
                     product_title=product["title"],
                     rating=product["rating"],
                     rating_count=product["rating_count"],
+                    count_type=product["count_type"],
                     result=result
                 )
 
@@ -339,29 +481,15 @@ def index():
 
                 error = str(exc)
 
-            except requests.HTTPError as exc:
+            except requests.RequestException:
 
                 app.logger.exception(
-                    "Bright Data HTTP error"
-                )
-
-                details = (
-                    exc.response.text[:1500]
-                    if exc.response is not None
-                    else str(exc)
-                )
-
-                error = f"API HTTP Error: {details}"
-
-            except requests.RequestException as exc:
-
-                app.logger.exception(
-                    "Network connection error"
+                    "Bright Data network error"
                 )
 
                 error = (
                     "Could not connect to Bright Data. "
-                    "Check your internet connection and try again."
+                    "Please try again later."
                 )
 
             except Exception:
@@ -372,7 +500,7 @@ def index():
 
                 error = (
                     "Something went wrong while analysing "
-                    "this product. Check the terminal."
+                    "this product. Check the application logs."
                 )
 
     return render_template(
@@ -381,10 +509,14 @@ def index():
     )
 
 
+# --------------------------------------------------
+# 11. RUN APPLICATION
+# --------------------------------------------------
+
 if __name__ == "__main__":
 
     app.run(
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=int(os.getenv("PORT", "5000")),
-        debug=os.getenv("FLASK_DEBUG", "true").lower() == "true"
+        debug=os.getenv("FLASK_DEBUG", "false").lower() == "true"
     )
