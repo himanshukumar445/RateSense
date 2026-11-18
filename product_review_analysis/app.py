@@ -31,8 +31,10 @@ app.secret_key = SECRET_KEY
 
 # Bright Data account API key
 API_KEY = os.getenv("BRIGHTDATA_API_KEY", "").strip()
-print("BRIGHTDATA KEY LOADED:", bool(API_KEY))
-print("BRIGHTDATA KEY LENGTH:", len(API_KEY))
+print("========== BRIGHT DATA CHECK ==========", flush=True)
+print("API KEY LOADED:", bool(API_KEY), flush=True)
+print("API KEY LENGTH:", len(API_KEY), flush=True)
+print("========================================", flush=True)
 
 # Remove Bearer prefix if accidentally included in the value
 if API_KEY.lower().startswith("bearer "):
