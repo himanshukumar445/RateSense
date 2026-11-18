@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import hashlib
 from urllib.parse import urlparse
 
 import requests
@@ -49,6 +50,13 @@ logging.basicConfig(level=logging.INFO)
 print("========== BRIGHT DATA CHECK ==========", flush=True)
 print("API KEY LOADED:", bool(API_KEY), flush=True)
 print("API KEY LENGTH:", len(API_KEY), flush=True)
+
+print(
+    "API KEY FINGERPRINT:",
+    hashlib.sha256(API_KEY.encode()).hexdigest()[:12],
+    flush=True
+
+)  
 
 if API_KEY:
 
