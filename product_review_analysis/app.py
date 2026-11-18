@@ -36,6 +36,24 @@ print("API KEY LOADED:", bool(API_KEY), flush=True)
 print("API KEY LENGTH:", len(API_KEY), flush=True)
 print("========================================", flush=True)
 
+import requests
+
+try:
+    test_response = requests.get(
+        "https://api.brightdata.com/status",
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+            "Accept": "application/json"
+        },
+        timeout=20
+    )
+
+    print("BRIGHT DATA STATUS:", test_response.status_code, flush=True)
+    print("BRIGHT DATA RESPONSE:", test_response.text[:300], flush=True)
+
+except Exception as e:
+    print("BRIGHT DATA TEST ERROR:", str(e), flush=True)
+
 # Remove Bearer prefix if accidentally included in the value
 if API_KEY.lower().startswith("bearer "):
     API_KEY = API_KEY[7:].strip()
