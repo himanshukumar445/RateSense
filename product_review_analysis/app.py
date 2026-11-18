@@ -10,15 +10,15 @@ from flask import Flask, render_template, request
 from rating_engine import classify_product
 
 
-# --------------------------------------------------
+# ==================================================
 # 1. CONFIGURATION
-# --------------------------------------------------
+# ==================================================
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# Use a private secret from Render or local .env
+# Load Flask secret key
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "").strip()
 
 if not SECRET_KEY:
@@ -29,43 +29,68 @@ if not SECRET_KEY:
 
 app.secret_key = SECRET_KEY
 
-# Bright Data account API key
+# Load Bright Data API key
 API_KEY = os.getenv("BRIGHTDATA_API_KEY", "").strip()
-print("========== BRIGHT DATA CHECK ==========", flush=True)
-print("API KEY LOADED:", bool(API_KEY), flush=True)
-print("API KEY LENGTH:", len(API_KEY), flush=True)
-print("========================================", flush=True)
 
-import requests
-
-try:
-    test_response = requests.get(
-        "https://api.brightdata.com/status",
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Accept": "application/json"
-        },
-        timeout=20
-    )
-
-    print("BRIGHT DATA STATUS:", test_response.status_code, flush=True)
-    print("BRIGHT DATA RESPONSE:", test_response.text[:300], flush=True)
-
-except Exception as e:
-    print("BRIGHT DATA TEST ERROR:", str(e), flush=True)
-
-# Remove Bearer prefix if accidentally included in the value
+# Remove Bearer prefix if accidentally included in .env
 if API_KEY.lower().startswith("bearer "):
     API_KEY = API_KEY[7:].strip()
 
+# Bright Data API configuration
 BASE_URL = "https://api.brightdata.com/datasets/v3"
 
 logging.basicConfig(level=logging.INFO)
 
 
-# --------------------------------------------------
-# 2. SUPPORTED SHOPPING WEBSITES
-# --------------------------------------------------
+# ==================================================
+# 2. BRIGHT DATA AUTHENTICATION DIAGNOSTIC
+# ==================================================
+
+print("========== BRIGHT DATA CHECK ==========", flush=True)
+print("API KEY LOADED:", bool(API_KEY), flush=True)
+print("API KEY LENGTH:", len(API_KEY), flush=True)
+
+if API_KEY:
+
+    try:
+        test_response = requests.get(
+            "https://api.brightdata.com/status",
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Accept": "application/json"
+            },
+            timeout=20
+        )
+
+        print(
+            "BRIGHT DATA STATUS:",
+            test_response.status_code,
+            flush=True
+        )
+
+        print(
+            "BRIGHT DATA RESPONSE:",
+            test_response.text[:300],
+            flush=True
+        )
+
+    except requests.RequestException as e:
+
+        print(
+            "BRIGHT DATA TEST ERROR:",
+            str(e),
+            flush=True
+        )
+
+else:
+    print("BRIGHT DATA TEST SKIPPED: API key missing.", flush=True)
+
+print("========================================", flush=True)
+
+
+# ==================================================
+# 3. SUPPORTED SHOPPING WEBSITES
+# ==================================================
 
 MARKETPLACES = {
     "amazon.in": ("Amazon India", "AMAZON_DATASET_ID"),
@@ -79,11 +104,12 @@ MARKETPLACES = {
 }
 
 
-# --------------------------------------------------
-# 3. VALIDATE PRODUCT URL
-# --------------------------------------------------
+# ==================================================
+# 4. VALIDATE PRODUCT URL
+# ==================================================
 
 def valid_product_url(url):
+
     try:
         parsed = urlparse(url)
 
@@ -96,9 +122,9 @@ def valid_product_url(url):
         return False
 
 
-# --------------------------------------------------
-# 4. EXPAND SHORTENED PRODUCT URLS
-# --------------------------------------------------
+# ==================================================
+# 5. EXPAND SHORTENED PRODUCT URLS
+# ==================================================
 
 def resolve_product_url(url):
 
@@ -119,6 +145,7 @@ def resolve_product_url(url):
             return response.url
 
     except requests.RequestException:
+
         app.logger.warning(
             "Could not expand the supplied product URL."
         )
@@ -126,9 +153,9 @@ def resolve_product_url(url):
     return url
 
 
-# --------------------------------------------------
-# 5. IDENTIFY MARKETPLACE
-# --------------------------------------------------
+# ==================================================
+# 6. IDENTIFY SHOPPING WEBSITE
+# ==================================================
 
 def identify_marketplace(url):
 
@@ -139,9 +166,11 @@ def identify_marketplace(url):
         if host == domain or host.endswith("." + domain):
 
             name, env_key = config
+
             dataset_id = os.getenv(env_key, "").strip()
 
             if not dataset_id:
+
                 raise ValueError(
                     f"{name} is recognised, but its dataset ID "
                     f"({env_key}) is missing from the environment."
@@ -155,13 +184,14 @@ def identify_marketplace(url):
     )
 
 
-# --------------------------------------------------
-# 6. BRIGHT DATA AUTHENTICATION
-# --------------------------------------------------
+# ==================================================
+# 7. BRIGHT DATA API HEADERS
+# ==================================================
 
 def api_headers():
 
     if not API_KEY:
+
         raise RuntimeError(
             "Bright Data API key is missing. "
             "Add BRIGHTDATA_API_KEY in Render Environment Variables."
@@ -174,9 +204,9 @@ def api_headers():
     }
 
 
-# --------------------------------------------------
-# 7. HANDLE BRIGHT DATA API ERRORS
-# --------------------------------------------------
+# ==================================================
+# 8. HANDLE API ERRORS
+# ==================================================
 
 def check_api_response(response):
 
@@ -187,6 +217,7 @@ def check_api_response(response):
 
     try:
         details = response.json()
+
     except ValueError:
         details = response.text[:1000]
 
@@ -197,20 +228,21 @@ def check_api_response(response):
     )
 
     if status_code == 401:
+
         raise RuntimeError(
             "Bright Data authentication failed (HTTP 401). "
-            "Check that BRIGHTDATA_API_KEY in Render is a valid "
-            "account API key from Bright Data Settings. "
-            "Do not use a proxy-zone password."
+            "Check the API key in Render Environment Variables."
         )
 
     if status_code == 403:
+
         raise RuntimeError(
             "Bright Data access denied (HTTP 403). "
-            "Check your account permissions and scraper access."
+            "Check account permissions and scraper access."
         )
 
     if status_code == 404:
+
         raise RuntimeError(
             "Bright Data could not find the requested resource. "
             "Check the dataset ID or snapshot ID."
@@ -222,9 +254,9 @@ def check_api_response(response):
     )
 
 
-# --------------------------------------------------
-# 8. REQUEST PRODUCT DATA
-# --------------------------------------------------
+# ==================================================
+# 9. REQUEST PRODUCT DATA
+# ==================================================
 
 def request_product_data(url, dataset_id):
 
@@ -263,6 +295,7 @@ def request_product_data(url, dataset_id):
             snapshot_id = response.json().get("snapshot_id")
 
             if not snapshot_id:
+
                 raise RuntimeError(
                     "Bright Data did not return a snapshot ID."
                 )
@@ -306,6 +339,7 @@ def request_product_data(url, dataset_id):
                     return result.json()
 
                 if status == "failed":
+
                     raise RuntimeError(
                         "Bright Data could not process this product URL."
                     )
@@ -320,20 +354,22 @@ def request_product_data(url, dataset_id):
         )
 
     except requests.Timeout:
+
         raise RuntimeError(
             "Bright Data request timed out. Please try again."
         )
 
     except requests.ConnectionError:
+
         raise RuntimeError(
             "Could not connect to Bright Data. "
             "Please check the network and try again."
         )
 
 
-# --------------------------------------------------
-# 9. EXTRACT VALUES FROM PRODUCT DATA
-# --------------------------------------------------
+# ==================================================
+# 10. EXTRACT PRODUCT RATING AND COUNT
+# ==================================================
 
 def first_value(item, field_names):
 
@@ -356,6 +392,7 @@ def extract_product_data(data):
         items = data
 
     else:
+
         raise ValueError(
             "Unexpected data format returned by Bright Data."
         )
@@ -374,7 +411,7 @@ def extract_product_data(data):
             "rating_value"
         ])
 
-        # Prefer actual rating count fields
+        # Prefer actual rating count
         count = first_value(item, [
             "rating_count",
             "ratings_count",
@@ -384,14 +421,16 @@ def extract_product_data(data):
             "ratings_total"
         ])
 
-        # Fallback: review count, not necessarily rating count
         count_type = "rating_count"
 
+        # Fallback to review count
         if count is None:
+
             count = first_value(item, [
                 "reviews_count",
                 "review_count"
             ])
+
             count_type = "review_count"
 
         if rating is None or count is None:
@@ -420,9 +459,9 @@ def extract_product_data(data):
         if 1 <= rating <= 5 and count >= 0:
 
             if count_type == "review_count":
+
                 app.logger.warning(
-                    "Using reviews_count as a proxy for rating volume. "
-                    "This is not necessarily the total rating count."
+                    "Using review count as a proxy for rating volume."
                 )
 
             return {
@@ -442,9 +481,9 @@ def extract_product_data(data):
     )
 
 
-# --------------------------------------------------
-# 10. MAIN ROUTE
-# --------------------------------------------------
+# ==================================================
+# 11. MAIN FLASK ROUTE
+# ==================================================
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -465,29 +504,30 @@ def index():
 
             try:
 
-                # Expand shortened links
+                # Expand shortened URL
                 final_url = resolve_product_url(product_url)
 
-                # Identify marketplace
+                # Identify shopping website
                 platform, dataset_id = identify_marketplace(
                     final_url
                 )
 
-                # Retrieve product data
+                # Retrieve product information
                 raw_data = request_product_data(
                     final_url,
                     dataset_id
                 )
 
-                # Extract rating details
+                # Extract product rating
                 product = extract_product_data(raw_data)
 
-                # Classify product using existing rating engine
+                # Classify product
                 result = classify_product(
                     product["rating"],
                     product["rating_count"]
                 )
 
+                # Display result page
                 return render_template(
                     "result.html",
                     product_url=final_url,
@@ -531,9 +571,9 @@ def index():
     )
 
 
-# --------------------------------------------------
-# 11. RUN APPLICATION
-# --------------------------------------------------
+# ==================================================
+# 12. RUN APPLICATION
+# ==================================================
 
 if __name__ == "__main__":
 
