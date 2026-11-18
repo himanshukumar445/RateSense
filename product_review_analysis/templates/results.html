@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Report | ReviewLens</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% include "header.html" %}
+
+  <main>
+    <section class="report-head">
+      <div class="wrap report-head-inner">
+        <div>
+          <p class="eyebrow">Analysis report</p>
+          <h1>Review analysis</h1>
+          <p class="report-meta">Source: {{ platform }}{% if product_url %}. <span class="report-url">{{ product_url }}</span>{% endif %}</p>
+        </div>
+        <div class="report-actions">
+          <a class="btn btn-primary" href="{{ url_for('download') }}">Download CSV</a>
+          <a class="btn btn-ghost" href="{{ url_for('index', _anchor='analyze') }}">Analyze another</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="wrap report-body">
+      {% if saved_id %}<p class="notice notice-success">Saved to MySQL as analysis run #{{ saved_id }}.</p>{% endif %}
+      {% if db_warning %}<p class="notice notice-error" role="alert">{{ db_warning }}</p>{% endif %}
+
+      <!-- Ledger -->
+      <section class="ledger" aria-label="Summary">
+        <div class="ledger-cell"><p class="ledger-label">Reviews analyzed</p><p class="ledger-num">{{ "{:,}".format(summary.total) }}</p><p class="ledger-sub">non-empty reviews</p></div>
+        <div class="ledger-cell"><p class="ledger-label">Positive</p><p class="ledger-num c-positive">{{ summary.positive_pct }}%</p><p class="ledger-sub">{{ "{:,}".format(summary.positive) }} reviews</p></div>
+        <div class="ledger-cell"><p class="ledger-label">Neutral</p><p class="ledger-num c-neutral">{{ summary.neutral_pct }}%</p><p class="ledger-sub">{{ "{:,}".format(summary.neutral) }} reviews</p></div>
+        <div class="ledger-cell"><p class="ledger-label">Negative</p><p class="ledger-num c-negative">{{ summary.negative_pct }}%</p><p class="ledger-sub">{{ "{:,}".format(summary.negative) }} reviews</p></div>
+      </section>
+
+      <div class="report-grid">
+        <!-- Sentiment chart -->
+        <section class="card" aria-labelledby="dist-title">
+          <h2 id="dist-title" class="card-title">Sentiment distribution</h2>
+          {% set ns = namespace(offset=25) %}
+          <div class="donut-wrap">
+            <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="Positive {{ summary.positive_pct }} percent, neutral {{ summary.neutral_pct }} percent, negative {{ summary.negative_pct }} percent">
+              <circle cx="21" cy="21" r="15.9155" fill="none" stroke="rgba(34,45,39,.08)" stroke-width="5"/>
+              {% for key in ['positive', 'neutral', 'negative'] %}
+                {% set pct = summary[key ~ '_pct'] %}
+                {% if pct > 0 %}
+                  <circle class="seg seg-{{ key }}" cx="21" cy="21" r="15.9155" fill="none" stroke-width="5" stroke-dasharray="{{ pct }} {{ 100 - pct }}" stroke-dashoffset="{{ ns.offset }}"/>
+                  {% set ns.offset = ns.offset - pct %}
+                {% endif %}
+              {% endfor %}
+            </svg>
+            <ul class="legend">
+              <li><span class="swatch sw-positive"></span>Positive<strong>{{ summary.positive_pct }}%</strong></li>
+              <li><span class="swatch sw-neutral"></span>Neutral<strong>{{ summary.neutral_pct }}%</strong></li>
+              <li><span class="swatch sw-negative"></span>Negative<strong>{{ summary.negative_pct }}%</strong></li>
+            </ul>
+          </div>
+          {% if strengths %}
+            <h3 class="subhead">What customers praise</h3>
+            <ul class="quotes">{% for s in strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+          {% endif %}
+        </section>
+
+        <!-- Problems -->
+        <section class="card" aria-labelledby="issues-title">
+          <h2 id="issues-title" class="card-title">Detected problems</h2>
+          {% if issues %}
+            <ul class="issues">
+              {% for i in issues %}
+                {% set pct = (i.count * 100 / summary.total)|round(1) %}
+                <li class="issue">
+                  <div class="issue-head"><h3>{{ i.issue }}</h3><span class="issue-count">{{ i.count }} {{ 'review' if i.count == 1 else 'reviews' }}, {{ pct }}%</span></div>
+                  <div class="bar" aria-hidden="true"><span style="width: {{ pct }}%"></span></div>
+                  <p class="issue-tip">{{ i.suggestion }}</p>
+                  <details>
+                    <summary>Show {{ i.examples|length }} example {{ 'review' if i.examples|length == 1 else 'reviews' }}</summary>
+                    <ul class="quotes">{% for e in i.examples %}<li>{{ e }}</li>{% endfor %}</ul>
+                  </details>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty">No problem categories matched. That does not prove there are none: the rules only match the phrases listed in <code>ISSUES</code>.</p>
+          {% endif %}
+        </section>
+      </div>
+
+      <!-- Table -->
+      <section class="card card-table" aria-labelledby="table-title">
+        <h2 id="table-title" class="card-title">Analyzed reviews</h2>
+        <div class="filters">
+          <div class="filter"><label for="f-search">Search reviews</label><input id="f-search" class="field field-sm" type="search" placeholder="Type a word or phrase"></div>
+          <div class="filter"><label for="f-sentiment">Sentiment</label>
+            <select id="f-sentiment" class="field field-sm"><option value="">All sentiments</option><option value="positive">Positive</option><option value="neutral">Neutral</option><option value="negative">Negative</option></select></div>
+          <div class="filter"><label for="f-issue">Problem category</label>
+            <select id="f-issue" class="field field-sm"><option value="">All categories</option>{% for i in issues %}<option value="{{ i.issue }}">{{ i.issue }}</option>{% endfor %}</select></div>
+        </div>
+        <p id="table-count" class="table-count" aria-live="polite"></p>
+        <div class="table-wrap">
+          <table id="reviews-table">
+            <thead>
+              <tr><th scope="col">#</th><th scope="col">Review</th><th scope="col">Sentiment</th><th scope="col">Confidence</th><th scope="col">Problems</th>
+                {% for c in extra_cols %}<th scope="col">{{ c|replace('_', ' ')|title }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr data-sentiment="{{ r.sentiment }}" data-issues="{{ r.issues|replace('; ', '|') }}">
+                  <td class="cell-n">{{ loop.index }}</td>
+                  <td class="cell-review">{{ r.review }}</td>
+                  <td><span class="pill pill-{{ r.sentiment }}">{{ r.sentiment|capitalize }}</span></td>
+                  <td>{% if r.confidence is number %}{{ (r.confidence * 100)|round|int }}%{% else %}n/a{% endif %}</td>
+                  <td>{% if r.issues %}{% for name in r.issues.split('; ') %}<span class="tag">{{ name }}</span> {% endfor %}{% else %}<span class="muted">none</span>{% endif %}</td>
+                  {% for c in extra_cols %}<td>{{ r[c] }}</td>{% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="table-foot">
+          <button id="show-more" class="btn btn-ghost btn-sm" type="button" hidden>Show 25 more</button>
+          {% if table_truncated %}<p class="small">This table shows the first {{ rows|length }} of {{ "{:,}".format(summary.total) }} reviews. The downloaded CSV contains all of them.</p>{% endif %}
+        </div>
+      </section>
+    </div>
+  </main>
+
+  {% include "footer.html" %}
+  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</body>
+</html>

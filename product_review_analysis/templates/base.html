@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <title>{% block title %}ReviewLens{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('index') }}">
+      <span class="brand-mark">R</span>
+      <span>Review<span class="brand-light">Lens</span></span>
+    </a>
+
+    <p class="nav-label">WORKSPACE</p>
+    <nav class="sidebar-nav">
+      <a class="nav-link active" href="{{ url_for('index') }}">
+        <span class="nav-icon">⌂</span> Overview
+      </a>
+      <a class="nav-link" href="{{ url_for('index') }}#analyze">
+        <span class="nav-icon">⌕</span> Analyze reviews
+      </a>
+      <a class="nav-link" href="{{ url_for('index') }}#features">
+        <span class="nav-icon">▦</span> Features
+      </a>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-help-icon">?</div>
+      <strong>ReviewLens</strong>
+      <p>Turn customer feedback into better decisions.</p>
+      <span class="version-label">ML · NLP · INSIGHTS</span>
+    </div>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div>
+        <p class="topbar-kicker">CUSTOMER INTELLIGENCE</p>
+        <p class="topbar-title">Review Analytics Workspace</p>
+      </div>
+      <div class="profile-chip">
+        <span class="profile-avatar">RL</span>
+        <span><strong>ReviewLens</strong><small>Analytics workspace</small></span>
+      </div>
+    </header>
+
+    <main class="page-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert {{ category }}" role="alert">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+      <span>© ReviewLens</span>
+      <span>Built with Python · NLP · Scikit-learn · Flask</span>
+    </footer>
+  </div>
+</div>
+</body>
+</html>

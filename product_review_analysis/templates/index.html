@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+
+{% block title %}RateSense — Smart Product Quality Analyzer{% endblock %}
+
+{% block page_label %}Overview{% endblock %}
+
+{% block content %}
+
+<section class="hero-section">
+
+    <div class="hero-copy">
+
+        <div class="eyebrow">
+            <span class="eyebrow-pulse"></span>
+            INTELLIGENCE FOR EVERY PURCHASE
+        </div>
+
+        <h1>
+            Know the product.<br>
+            <span>Before you buy.</span>
+        </h1>
+
+        <p class="hero-description">
+            Cut through the noise. RateSense reads a product's rating
+            signals and turns them into a simple quality assessment.
+        </p>
+
+        <div class="hero-proof">
+            <span><b>✦</b> Automatic rating detection</span>
+            <span><b>◈</b> Evidence-aware results</span>
+        </div>
+
+    </div>
+
+    <div class="hero-visual">
+
+        <div class="orbit orbit-a"></div>
+        <div class="orbit orbit-b"></div>
+        <div class="orbit orbit-c"></div>
+
+        <div class="visual-core">
+
+            <div class="core-ring"></div>
+
+            <div class="core-symbol">
+                R<span>.</span>
+            </div>
+
+            <div class="core-caption">
+                RATING<br>INTELLIGENCE
+            </div>
+
+        </div>
+
+        <div class="float-chip chip-top">
+            <span class="chip-spark">✦</span>
+            SMART ANALYSIS
+        </div>
+
+        <div class="float-chip chip-bottom">
+            <span class="chip-dot"></span>
+            SIGNAL DETECTED
+        </div>
+
+        <div class="visual-cross cross-one">+</div>
+        <div class="visual-cross cross-two">+</div>
+
+    </div>
+
+</section>
+
+
+<section class="analyzer-section" id="analyze">
+
+    <div class="section-overline">
+        <span>01</span>
+        START YOUR ANALYSIS
+    </div>
+
+    <div class="analyzer-card">
+
+        <div class="card-topline">
+
+            <div>
+
+                <div class="card-eyebrow">
+                    PRODUCT SCANNER
+
+                    <span class="live-pill">
+                        <i></i> READY
+                    </span>
+                </div>
+
+                <h2>Find the signal in the stars.</h2>
+
+                <p>
+                    Paste a product page link. We'll retrieve its available rating data.
+                </p>
+
+            </div>
+
+            <div class="scanner-icon">
+                <span>⌕</span>
+                <i></i>
+            </div>
+
+        </div>
+
+
+        {% if error %}
+
+            <div class="error-message" role="alert">
+                <span>!</span>
+                {{ error }}
+            </div>
+
+        {% endif %}
+
+
+        <form method="POST"
+              action="{{ url_for('index') }}"
+              class="analyzer-form"
+              id="analyzer-form">
+
+            <label for="product_url">PRODUCT PAGE URL</label>
+
+            <div class="url-input-wrap">
+
+                <span class="url-icon">↗</span>
+
+                <input
+                    type="url"
+                    id="product_url"
+                    name="product_url"
+                    placeholder="https://www.amazon.in/dp/..."
+                    autocomplete="url"
+                    required
+                >
+
+                <span class="input-secure">LINK INPUT</span>
+
+            </div>
+
+
+            <button type="submit"
+                    class="analyze-btn"
+                    id="analyze-btn">
+
+                <span class="button-shine"></span>
+
+                <span class="button-label">
+                    Analyze product
+                </span>
+
+                <span class="button-arrow">↗</span>
+
+            </button>
+
+        </form>
+
+
+        <div class="card-foot">
+
+            <span>
+                <i class="check-icon">✓</i>
+                No manual rating entry
+            </span>
+
+            <span>
+                <i class="check-icon">✓</i>
+                Automated data retrieval
+            </span>
+
+            <span>
+                <i class="check-icon">✓</i>
+                Instant quality category
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="under-card-note">
+        <span>✧</span>
+        Results depend on the rating data available from the supported shopping platform.
+    </div>
+
+</section>
+
+
+<section class="how-section" id="how-it-works">
+
+    <div class="section-heading">
+
+        <div class="section-overline">
+            <span>02</span>
+            THE RATESENSE METHOD
+        </div>
+
+        <h2>
+            From product link to
+            <span>clear insight.</span>
+        </h2>
+
+        <p>
+            A focused workflow that turns public product rating signals
+            into an easy-to-read result.
+        </p>
+
+    </div>
+
+
+    <div class="process-grid">
+
+        <article class="process-card">
+
+            <div class="process-number">01</div>
+
+            <div class="process-icon icon-link">↗</div>
+
+            <h3>Paste a link</h3>
+
+            <p>
+                Start with a product URL from a shopping platform
+                configured in RateSense.
+            </p>
+
+            <div class="card-line"></div>
+
+        </article>
+
+
+        <article class="process-card featured-process">
+
+            <div class="process-number">02</div>
+
+            <div class="process-icon icon-scan">⌁</div>
+
+            <h3>Retrieve rating data</h3>
+
+            <p>
+                The data provider retrieves available product
+                information and rating signals.
+            </p>
+
+            <div class="card-line"></div>
+
+        </article>
+
+
+        <article class="process-card">
+
+            <div class="process-number">03</div>
+
+            <div class="process-icon icon-insight">◈</div>
+
+            <h3>Understand quality</h3>
+
+            <p>
+                RateSense classifies the available rating evidence
+                as Good, Average or Bad.
+            </p>
+
+            <div class="card-line"></div>
+
+        </article>
+
+    </div>
+
+</section>
+
+
+<section class="quality-section">
+
+    <div class="quality-heading">
+
+        <div>
+
+            <div class="section-overline">
+                <span>03</span>
+                QUALITY SIGNALS
+            </div>
+
+            <h2>
+                Three outcomes.
+                <span>One clearer view.</span>
+            </h2>
+
+        </div>
+
+        <p>
+            Each category is based on the rating and volume thresholds
+            configured in the analysis engine.
+        </p>
+
+    </div>
+
+
+    <div class="quality-grid">
+
+        <div class="quality-card quality-bad">
+
+            <div class="quality-card-top">
+                <span class="quality-indicator"></span>
+                01 / LOW SIGNAL
+            </div>
+
+            <div class="quality-word">BAD</div>
+
+            <p>Rating below 3.0 out of 5.</p>
+
+        </div>
+
+
+        <div class="quality-card quality-average">
+
+            <div class="quality-card-top">
+                <span class="quality-indicator"></span>
+                02 / MID SIGNAL
+            </div>
+
+            <div class="quality-word">AVERAGE</div>
+
+            <p>
+                Rating from 3.0 to below 4.0,
+                or limited evidence volume.
+            </p>
+
+        </div>
+
+
+        <div class="quality-card quality-good">
+
+            <div class="quality-card-top">
+                <span class="quality-indicator"></span>
+                03 / STRONG SIGNAL
+            </div>
+
+            <div class="quality-word">GOOD</div>
+
+            <p>
+                Rating of at least 4.0 with sufficient evidence volume.
+            </p>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<script>
+
+(() => {
+
+    const form = document.getElementById("analyzer-form");
+    const button = document.getElementById("analyze-btn");
+
+    if (!form || !button) return;
+
+    form.addEventListener("submit", () => {
+
+        if (!form.reportValidity()) return;
+
+        button.classList.add("is-loading");
+
+        button.querySelector(".button-label").textContent =
+            "Analyzing product...";
+
+        button.querySelector(".button-arrow").textContent = "◌";
+
+        button.setAttribute("aria-busy", "true");
+
+    });
+
+})();
+
+</script>
+
+{% endblock %}
