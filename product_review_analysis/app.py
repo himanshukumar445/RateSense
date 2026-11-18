@@ -58,6 +58,11 @@ print(
 
 )  
 
+print(
+    "RENDER KEY FINGERPRINT:",
+    hashlib.sha256(API_KEY.encode()).hexdigest()[:12],
+    flush=True
+)
 if API_KEY:
 
     try:
